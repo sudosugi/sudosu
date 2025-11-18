@@ -1,0 +1,53 @@
+/*
+ * injector.c — Safe educational ptrace demonstration
+ * Demonstrates: PTRACE_ATTACH, PTRACE_GETREGS, PTRACE_POKEDATA, PTRACE_DETACH
+ * Does NOT inject harmful shellcode (only writes a harmless value)
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/ptrace.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/user.h>
+#include <unistd.h>
+
+int main(int argc, char *argv[])
+{
+    if (argc != 2) {
+        printf("Usage: %s <PID>\n", argv[0]);
+        return -1;
+    }
+
+    pid_t pid = atoi(argv[1]);
+    int status;
+
+    printf("----- Memory Injector Demo -----\n");
+
+    // 1. ATTACH
+    if (ptrace(PTRACE_ATTACH, pid, NULL, NULL) == -1) {
+        perror("PTRACE_ATTACH");
+        return -1;
+    }
+    waitpid(pid, &status, 0);
+
+    // 2. GET REGISTERS
+    struct user_regs_struct regs;
+    ptrace(PTRACE_GETREGS, pid, NULL, &regs);
+
+#if defined(_x86_64_)
+    printf("Original RIP = 0x%llx\n", regs.rip);
+    unsigned long addr = regs.rip;
+#else
+    printf("Original EIP = 0x%lx\n", regs.eip);
+    unsigned long addr = regs.eip;
+#endif
+
+    // 3. WRITE HARMLESS VALUE
+    long data = 0x90909090;   // harmless NOP instructions
+    ptrace(PTRACE_POKETEXT, pid, (void *)addr, (void *)data);
+
+    printf("Wrote 0x%lx at address 0x%lx\n", data, addr);
+
+    // 4. DETACH
+    ptrace(PTRACE_DETACH, pid, NULL,
